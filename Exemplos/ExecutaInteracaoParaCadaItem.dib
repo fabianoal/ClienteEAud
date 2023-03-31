@@ -1,0 +1,119 @@
+#!meta
+
+{"kernelInfo":{"defaultKernelName":"csharp","items":[{"aliases":[],"name":"csharp"}]}}
+
+#!markdown
+
+# Introdução
+
+Nesse notebook, vamos resolver o seguinte problema: temos um arquivo texto com vários itens e precisamos, para cada item, executar uma interação em uma dada tarefa do e-Aud. Situações como essa são muito comuns, mas frequentemente são mais complexas. Normalmente temos um arquivo com uma planilha ou um CSV e precisamos executar interações mapeando os campos do arquivo com campos da interação. Entretanto, como uma introdução ao uso desse componente, entendemos que ler itens de um arquivo e executar uma interação para cada item, mapeando cada item para um campo dessa interação já é um bom ponto de partida.
+
+Esse notebook assume que você já está com seu ambiente devidamente configurado. Se não for o caso, o arquivo README.md contém as instruções básicas para que você configure seu ambiente.
+
+#!markdown
+
+# Iniciando o Cliente
+
+Nesse notebook, como não iremos acessar nenhuma base de dados, carregaremos somente os pacotes relacionados ao próprio ClienteEAUD e os pacotes adicionais para configurar o Serilog.
+
+#!csharp
+
+#i "nuget:/home/fabianoal/Documentos/Git Hub Projetos/ClienteEAud/bin/Debug"
+
+#!csharp
+
+#r "nuget:ClienteEAud, 1.0.0"
+#r "nuget:Serilog.Sinks.Console, 3.1.1"
+
+#!markdown
+
+Feito isso, podemos importar os ***namespaces*** necessários.
+
+#!csharp
+
+using eAudStuffCSharp;
+using Serilog;
+using eAudStuffCSharp.EAudTypes.Query;
+using eAudStuffCSharp.EAudTypes.Query.Atividade;
+using eAudStuffCSharp.Util;
+using System.Threading.Tasks;
+using System.Linq;
+using System.IO;
+using System.Text.Json.Serialization;
+using eAudStuffCSharp.EAudTypes.Query.Campos;
+using eAudStuffCSharp.EAudTypes.Post;
+using eAudStuffCSharp.EAudTypes.Query.ClassesAuxiliares;
+
+#!markdown
+
+Por fim, iniciamos o nosso Cliente. Se houver algum erro na célula abaixo, certifique-se que você criou corretamente sua chave de acesso à API do e-Aud e que você tem premissão para acessar a API nesse horário. Aqui, se quiséssemos acessar o ambiente de treinamento, bastaria usar EAudFunctions.Init("treinamento").
+
+#!csharp
+
+Log.Logger = new LoggerConfiguration()
+.MinimumLevel.Debug()
+.WriteTo.Console()
+.CreateLogger();
+
+EAudFunctions.Init("producao");
+
+#!markdown
+
+Agora, vamos ler os itens que estão em nosso arquivo.
+
+#!csharp
+
+var itens = File.ReadAllLines("./Dados/Itens.txt");
+
+#!csharp
+
+itens
+
+#!markdown
+
+Para executar interações no e-aud, antes precisamos saber quais os campos essa interação exige e, com base nessa informação, criar uma classe que conterá esses mapeamentos. No nosso caso, a interação tem dois campos, ambos do tipo texto. São eles:
+
+* Título Base (tituloBase)
+* Descrição do Item (descricaoItem)
+
+Dessa forma, vamos criar uma classe que represente os campos dessa interação. Essa classe vai ser posteriormente usada para montar o objeto interação que será usado.
+
+#!csharp
+
+class CamposInteracao {
+    [JsonPropertyName("tituloBase")]
+    public string Titulo { get; set; }
+
+    [JsonPropertyName("descricaoItem")]
+    public string DescricaoDoItem { get; set; }
+}
+
+#!markdown
+
+Aqui temos o principal elemente que nos permite mapear os campos da interação. Note que esse mapeamento se reflete na anotação ***JsonPropertyName***. Essa anotação será usada para criar nomear a propriedade que conterá o valor para a variável. Assim, ela deve corresponder com o **alias** do campo no e-Aud.
+
+# Executando Interações
+
+Agora, já temos todos os elementos para executar as interações. O código abaixo mostra como fazê-lo.
+
+#!csharp
+
+foreach (string item in itens)
+{
+
+    Log.Information($"Incluindo item {item}");
+    InteracaoPost<CamposInteracao> nomeacao = new InteracaoPost<CamposInteracao>(1425950, 7324) {
+        Campos = new CamposInteracao() { 
+            Titulo  = item,
+        },
+    };
+
+    EAudFunctions.PostaInteracao<CamposInteracao>(nomeacao).Wait();
+}
+Log.Information("Feito.");
+
+#!markdown
+
+Note que o tipo InteracaoPost requer um parâmetro de Tipo. Esse parâmetro de tipo representa o formulário da interação. Assim, as coisas comuns à interação estão encapsuladas na própria interação e as coisas específicas (os campos) são determinados por esse parâmetro.
+
+Isso nos permite executar qualquer tipo de interação no e-Aud, bastando somente criar um tipo compatível com os campos do e-Aud.

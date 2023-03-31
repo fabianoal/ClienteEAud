@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net7.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <PackageId>ClienteEAud</PackageId> 
+    <Version>1.0.0</Version> 
+    <Authors>Fabiano Andrade Lima</Authors> 
+    <Company>Controladoria-Geral da União</Company> 
+    <PackageTags>e-Aud</PackageTags> 
+    <Description>This package provides types and functions to facilitate the interaction with the e-Aud (https://eaud.cgu.gov.br) API.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.StaticFiles" Version="2.2.0" />
+    <PackageReference Include="Newtonsoft.Json" Version="12.0.3" />
+    <PackageReference Include="Serilog.Sinks.Console" Version="3.1.1" />
+    <PackageReference Include="Serilog.Sinks.File" Version="4.1.0" />
+    <PackageReference Include="ServiceStack.Text" Version="5.10.2" />
+    <PackageReference Include="System.Linq.Async" Version="6.0.1" />
+  </ItemGroup>
+</Project>
