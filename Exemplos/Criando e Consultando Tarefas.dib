@@ -1,0 +1,168 @@
+#!meta
+
+{"kernelInfo":{"defaultKernelName":"csharp","items":[{"aliases":[],"name":"csharp"}]}}
+
+#!markdown
+
+# Introdução
+
+Supondo o seguinte cenário: tenho um arquivo CSV e preciso, para cada linha desse arquivo, criar uma tarefa mapeando os campos do arquivo para os campos da tarefa. Entretanto, algumas tarefas já foram criadas. Assim, preciso antes comparar se a tarefa referente à linha já foi ou não criada antes de criá-la para que não haja tarefas repetidas.
+
+Como de constume, iniciamos configurando nosso ***notebook***.
+
+#!csharp
+
+#r "nuget:ClienteEAud, 1.0.0"
+#r "nuget:Serilog.Sinks.Console, 3.1.1"
+#r "nuget:ServiceStack.Text, 5.10.2"
+
+
+using eAudStuffCSharp;
+using Serilog;
+using eAudStuffCSharp.EAudTypes.Query;
+using eAudStuffCSharp.EAudTypes.Query.Atividade;
+using eAudStuffCSharp.Util;
+using System.Threading.Tasks;
+using System.Linq;
+using System.IO;
+using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
+using eAudStuffCSharp.EAudTypes.Query.Campos;
+using eAudStuffCSharp.EAudTypes.Post;
+using eAudStuffCSharp.EAudTypes.Query.ClassesAuxiliares;
+
+Log.Logger = new LoggerConfiguration()
+.MinimumLevel.Debug()
+.WriteTo.Console()
+.CreateLogger();
+
+EAudFunctions.Init("producao");
+
+#!markdown
+
+# Lendo Dados
+
+Para leitura dos dados do arquivo CSV, utilizaremos o excelente componete ServiceStack. Adicionalmente, criaremos uma estrutura de dados para conter os dados do CSV no formato de uma lista de objetos.
+
+#!csharp
+
+record ItemIdentificavel(int Id, string Nome, string Descricao);
+
+ServiceStack.Text.CsvConfig.ItemSeperatorString = ";";
+
+ItemIdentificavel[] itensIdentificaveis;
+
+FileStream fsItensIdentificaveis = new FileStream("./Dados/Itens Identificaveis.csv", FileMode.Open);
+itensIdentificaveis = ServiceStack.Text.CsvSerializer.DeserializeFromStream<ItemIdentificavel[]>(fsItensIdentificaveis);
+
+#!csharp
+
+itensIdentificaveis
+
+#!markdown
+
+# Criando Tarefas
+
+Vamos criar tarefas referentes aos dois primeirs itens somente para testar a consulta e, posteriormente, exemplificar como usar a consulta para fazer a carga diferencial.
+
+A atividade Item (item) foi pensada em ser criada através de um automatismo, dentro do qual alguns compartilhamentos de papéis seriam definidos. Entretanto, como vamos criar esses itens diretamente, precisamos fazer esses compartilhamentos de forma manual. Obtendo os dados da atividade, vemos que ela possui os seguintes papéis:
+
+#!csharp
+
+var atividade = EAudFunctions.GetEntidade<Atividade>("atividade/item").Result;
+atividade.PapeisDaAtividade
+
+#!markdown
+
+Estamos interessados principalmente nos papéis Unidade Gestora do Cadastro e Usuários Responsáveis (Ids 2394 e 3785). Vou atribuir ambos os papéis para a unidade CGU (Id 4185). 
+
+#!csharp
+
+class CamposTarefa{
+    [JsonPropertyName("tituloBase")]
+    public string TituloBase { get; set; }
+    [JsonPropertyName("Detalhamento")]
+    public string Detalhamento { get; set; }
+}
+
+
+List<TarefaPost<CamposTarefa>> tarefasPostadas = new List<TarefaPost<CamposTarefa>>();
+
+foreach(var itemIdentificavel in itensIdentificaveis.Skip(1)){
+    Log.Information($"Postando tarefa para Id {itemIdentificavel.Nome}");
+    TarefaPost<CamposTarefa> tarefaParaPostar = new TarefaPost<CamposTarefa>(){
+        CodigoAtividade = "item",
+        Campos = new CamposTarefa(){
+            TituloBase = $"{itemIdentificavel.Nome} #{itemIdentificavel.Id}",
+            Detalhamento = itemIdentificavel.Descricao
+        },
+        Compartilhamentos = new List<CompartilhamentoPost>(){
+            new CompartilhamentoPost(){
+                IdPapel = 2394,
+                IdUnidade = 4185,
+                Hierarquico = true
+            },
+            new CompartilhamentoPost(){
+                IdPapel = 3785,
+                IdUnidade = 4185,
+                Hierarquico = true
+            },
+        }
+    };
+    EAudFunctions.PostaTarefa<CamposTarefa>(tarefaParaPostar).Wait();
+    tarefasPostadas.Add(tarefaParaPostar);
+}
+
+#!markdown
+
+Reparem que os objetos TarefaPost foram guardados em uma lista. Isso é porque a função PostaTarefa atualizaca o objeto TarefaPost colocando nele o Id da Tarefa Gerada. Assim, temos os seguintes Ids de tarefas que foram gerados:
+
+#!csharp
+
+tarefasPostadas.Select(x => x.IdTarefaGerada)
+
+#!markdown
+
+# Consultando Tarefas
+
+Agora, vamos usar o cliente para consultar todas as tarefas da atividade Item (item). O código abaixo é suficiente para tal.
+
+#!csharp
+
+var tarefasAtividadeItem = EAudFunctions.GetTarefasDeAtividadeResumida(atividade.Id.ToString()).ToArrayAsync().Result;
+
+#!markdown
+
+Lembrando que geramos o título usando uma interpolação de strings e usando o # antes do id do item, podemos filtrar melhor os resultados para verificar os itens que criamos.
+
+#!csharp
+
+Regex r = new Regex(@"[a-zA-Z0-9 ]*? #(\d*)$");
+
+var tarefasCriadasFiltradas = tarefasAtividadeItem
+.Select(x => new {Id = x.Id, Titulo = x.Titulo, PrimeiraTag = x.Tags.FirstOrDefault(), RegexResult = r.Match(x.Titulo), IdItemIdentificavel = ""})
+.Where(x => x.RegexResult.Success)
+.Select(x => x with { IdItemIdentificavel = x.RegexResult.Groups[1].Value.Trim()});
+
+tarefasCriadasFiltradas
+
+#!markdown
+
+Com os dados acima, já é possível filtrar nosso conjunto de dados para carregar somente com tarefas cujo Id não foi carregado anteriormente. 
+
+#!csharp
+
+var itensRemanescentes = itensIdentificaveis.Where(x => !tarefasCriadasFiltradas.Any(z => z.IdItemIdentificavel.Equals(x.Id.ToString())));
+itensRemanescentes
+
+#!markdown
+
+Por fim, vamos excluir as tarefas que criamos como teste.
+
+#!csharp
+
+foreach(var tarefaPostada in tarefasPostadas){
+    Log.Information($"Excluindo tarefa {tarefaPostada.IdTarefaGerada}");
+    InteracaoPost<CamposInteracaoVazia> interacao = new InteracaoPost<CamposInteracaoVazia>(tarefaPostada.IdTarefaGerada, -3);
+    EAudFunctions.PostaInteracao<CamposInteracaoVazia>(interacao).Wait();
+}

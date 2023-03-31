@@ -18,10 +18,6 @@ Nesse notebook, como não iremos acessar nenhuma base de dados, carregaremos som
 
 #!csharp
 
-#i "nuget:/home/fabianoal/Documentos/Git Hub Projetos/ClienteEAud/bin/Debug"
-
-#!csharp
-
 #r "nuget:ClienteEAud, 1.0.0"
 #r "nuget:Serilog.Sinks.Console, 3.1.1"
 
@@ -46,7 +42,7 @@ using eAudStuffCSharp.EAudTypes.Query.ClassesAuxiliares;
 
 #!markdown
 
-Por fim, iniciamos o nosso Cliente. Se houver algum erro na célula abaixo, certifique-se que você criou corretamente sua chave de acesso à API do e-Aud e que você tem premissão para acessar a API nesse horário. Aqui, se quiséssemos acessar o ambiente de treinamento, bastaria usar EAudFunctions.Init("treinamento").
+Por fim, iniciamos o nosso Cliente. Se houver algum erro na célula abaixo, certifique-se que você criou corretamente sua chave de acesso à API do e-Aud e que você tem premissão para acessar a API nesse horário. Aqui, se quiséssemos acessar o ambiente de produção, bastaria usar EAudFunctions.Init("producao").
 
 #!csharp
 
@@ -102,13 +98,13 @@ foreach (string item in itens)
 {
 
     Log.Information($"Incluindo item {item}");
-    InteracaoPost<CamposInteracao> nomeacao = new InteracaoPost<CamposInteracao>(1425950, 7324) {
+    InteracaoPost<CamposInteracao> interacao = new InteracaoPost<CamposInteracao>(1425950, 7324) {
         Campos = new CamposInteracao() { 
             Titulo  = item,
         },
     };
 
-    EAudFunctions.PostaInteracao<CamposInteracao>(nomeacao).Wait();
+    EAudFunctions.PostaInteracao<CamposInteracao>(interacao).Wait();
 }
 Log.Information("Feito.");
 
@@ -117,3 +113,23 @@ Log.Information("Feito.");
 Note que o tipo InteracaoPost requer um parâmetro de Tipo. Esse parâmetro de tipo representa o formulário da interação. Assim, as coisas comuns à interação estão encapsuladas na própria interação e as coisas específicas (os campos) são determinados por esse parâmetro.
 
 Isso nos permite executar qualquer tipo de interação no e-Aud, bastando somente criar um tipo compatível com os campos do e-Aud.
+
+Ao rodar o código acima no e-aud em produção, três novas tarefas foram criadas: #1441864, #1441865 e #1441866. Isso aconteceu pois havia um automatismo configurado na interação que foi usada como exemplo. Para ilustrar ainda outro tópico, vamos rodar uma interação de exclusão para essas tarefas. 
+
+O código abaixo se encarrega disso.
+
+#!csharp
+
+int[] idsParaExclusao = new int[] {1441864, 1441865, 1441866};
+
+foreach(int idParaExclusao in idsParaExclusao){
+    Log.Information($"Excluindo tarefa {idParaExclusao}");
+    InteracaoPost<CamposInteracaoVazia> interacao = new InteracaoPost<CamposInteracaoVazia>(idParaExclusao, -3);
+    EAudFunctions.PostaInteracao<CamposInteracaoVazia>(interacao).Wait();
+}
+
+#!markdown
+
+Repare que no código acima, nós usamos uma definição de interação já existente no próprio cliente, a ***CamposInteracaoVazia***. Nesse caso, como o próprio nome sugere, a interação não tem nenhum campo. Assim como a CamposInteracaoVazia, existem outros diversos tipos de interação já definidos no cliente que foram usados em cenários específicos. 
+
+Muito provavelmente, esse não será o caso quando exceto em interações como a interação especial -3 (Excluir Tarefa).

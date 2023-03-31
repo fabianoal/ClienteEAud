@@ -1,0 +1,86 @@
+#!meta
+
+{"kernelInfo":{"defaultKernelName":"csharp","items":[{"aliases":[],"name":"csharp"}]}}
+
+#!markdown
+
+# Introdução
+
+Em alguns cenários, pode ser desejável consultar as definições das atividades para realizar alguma análise. Isso pode ser realizado facilmente através do uso de chamadas genéricas da classe EAudFunctions. Abaixo demonstramos como pode ser feito.
+
+# Configurando o Notebook
+
+Primeiramente, carregamos os pacotes necessários e importamos os ***namespaces*** requeridos para, no fim, iniciar o cliente.
+
+#!csharp
+
+#r "nuget:ClienteEAud, 1.0.0"
+#r "nuget:Serilog.Sinks.Console, 3.1.1"
+
+#!csharp
+
+using eAudStuffCSharp;
+using Serilog;
+using eAudStuffCSharp.EAudTypes.Query;
+using eAudStuffCSharp.EAudTypes.Query.Atividade;
+using eAudStuffCSharp.Util;
+using System.Threading.Tasks;
+using System.Linq;
+using System.IO;
+using System.Text.Json.Serialization;
+using eAudStuffCSharp.EAudTypes.Query.Campos;
+using eAudStuffCSharp.EAudTypes.Post;
+using eAudStuffCSharp.EAudTypes.Query.ClassesAuxiliares;
+
+Log.Logger = new LoggerConfiguration()
+.MinimumLevel.Debug()
+.WriteTo.Console()
+.CreateLogger();
+
+EAudFunctions.Init("producao");
+
+#!markdown
+
+# Obtendo Atividade
+
+O Cliente e-aud já possui classes que representam uma Atividade. Assim, basta chamar a API genérica de EAudFunctions com tipos como parâmetros para obter os objetos hidratados. No exemplo abaixo, vamos obter a atividade Planilha de Horas, cujo código é "planilhaHorasPgd"
+
+#!csharp
+
+string codigoAtividade = "planilhaHorasPgd";
+Atividade atividade = await EAudFunctions.GetEntidade<Atividade>($"atividade/{codigoAtividade}");
+
+#!csharp
+
+atividade
+
+#!markdown
+
+O objeto atividade não contém as situações, permissões nem os tipos de interação. Entretanto, podemos facilmente obter essas informações com o código abaixo.
+
+#!csharp
+
+var permissoes = await EAudFunctions.GetEntidade<PermissaoInteracao[]>($"atividade/{atividade.Id}/tipo-interacao/disponiveis");
+var situacoes = await EAudFunctions.GetEntidade<SituacaoAtividade[]>($"atividade/{atividade.Id}/situacoes");
+var 
+
+#!csharp
+
+permissoes
+
+#!markdown
+
+Por fim, obtemos os tipso de interação disponíveis.
+
+#!csharp
+
+List<TipoInteracao> interacoes = new List<TipoInteracao>();
+
+var queryVazia = new Dictionary<string, string>(){ };
+
+await foreach (var tipoInteracao in EAudFunctions.GetEntidades<TipoInteracaoResumido>($"atividade/{atividade.Id}/tipointeracao", queryVazia)){
+    Log.Information($"Buscando interacao {tipoInteracao.Id}");
+    interacoes.Add(await EAudFunctions.GetEntidade<TipoInteracao>($"tipointeracao/{tipoInteracao.Id}/json"));
+}
+
+interacoes
