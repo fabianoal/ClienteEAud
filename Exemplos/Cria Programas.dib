@@ -1,0 +1,198 @@
+#!meta
+
+{"kernelInfo":{"defaultKernelName":"csharp","items":[{"aliases":[],"name":"csharp"}]}}
+
+#!markdown
+
+# Introdução
+
+Na virada de exercício, é frequentemente desejável criar os programas e planos operacionais copiando os programas do exercício corrente. Como o componente Tarefas do PO não permite cópia, e dado que o campo que usa esse componente é obrigatório, não é possível fazer isso via automatismo no e-Aud. Assim, esse script le os programas de um ano para criá-los no ano seguinte.
+
+# Configurando o Notebook
+
+Primeiramente, carregamos os pacotes necessários e importamos os ***namespaces*** requeridos para, no fim, iniciar o cliente.
+
+#!csharp
+
+#r "nuget:ClienteEAud, 1.0.0"
+#r "nuget:Serilog.Sinks.Console, 3.1.1"
+
+#!csharp
+
+using eAudStuffCSharp;
+using System.Text.RegularExpressions;
+using Serilog;
+using eAudStuffCSharp.EAudTypes.Query;
+using eAudStuffCSharp.EAudTypes.Query.Atividade;
+using eAudStuffCSharp.Util;
+using System.Threading.Tasks;
+using System.Linq;
+using System.IO;
+using System.Text.Json.Serialization;
+using eAudStuffCSharp.EAudTypes.Query.Campos;
+using eAudStuffCSharp.EAudTypes.Post;
+using eAudStuffCSharp.EAudTypes.Post.CamposPost;
+using eAudStuffCSharp.EAudTypes.Query.ClassesAuxiliares;
+
+Log.Logger = new LoggerConfiguration()
+.MinimumLevel.Debug()
+.WriteTo.Console()
+.CreateLogger();
+
+EAudFunctions.Init("treinamento");
+
+#!markdown
+
+# Tipos e funções necessários
+
+Abaixo, defimos algumas variáveis e tipos necessários para interagir com a API que não estão definidos no client.
+
+#!csharp
+
+private static Regex Rx = new Regex(@"^\d{6,8}$");
+
+public class Pactuacao
+{
+    [JsonPropertyName("id")]
+    public int Id { get; set; }
+
+    [JsonPropertyName("descricao")]
+    public string Descricao { get; set; }
+
+    [JsonPropertyName("dataInicio")]
+    [JsonConverter(typeof(DateTimeConverter))]
+
+    public DateTime? DataInicio { get; set; }
+
+    [JsonPropertyName("dataFim")]
+    [JsonConverter(typeof(DateTimeConverter))]
+
+    public DateTime? DataFim { get; set; }
+
+    [JsonPropertyName("ativo")]
+    public bool Ativo { get; set; }
+
+    [JsonPropertyName("custoDaHora")]
+    public double CustoDaHora { get; set; }
+
+    [JsonPropertyName("custoDaHoraFormnatado")]
+    public string CustoDaHoraFormnatado { get; set; }
+
+    [JsonPropertyName("nomeExibicao")]
+    public string NomeExibicao { get; set; }
+}
+
+#!csharp
+
+private static TarefaPost<CamposProgramaPost> CriaTarefaProgramaPost(Tarefa<CamposPrograma> tarefa, string codigoAtividade, Pactuacao exercicioOrigem, Pactuacao exercicioDestino) =>
+    new TarefaPost<CamposProgramaPost>(){
+            Id = "",
+            Compartilhamentos = new List<CompartilhamentoPost>(),
+            CodigoAtividade = codigoAtividade,
+            Campos = new CamposProgramaPost(){
+                Codpisiafi = tarefa.Campos.CodPISiafi.Valor,
+                GerentePrograma = String.Join(',', tarefa.Campos.GerentePrograma.Valor.Select(x => x.Id).ToArray()),
+                PactuacaoPO = exercicioDestino.Id.ToString(),
+                Titulo = tarefa.Titulo.Replace($"({exercicioOrigem.DataFim?.Year})" , $"({exercicioDestino.DataFim?.Year})"),
+                DescriResultados = tarefa.Campos.DescriResultados.Valor?.Replace("&#34;", "") ?? "",
+                Prioridade = tarefa.Campos.Prioridade.Valor?.Id.ToString() ?? null,
+                Detalhamento = string.Join('\n',
+                    tarefa.Campos.Detalhamento.Valor?.Replace("&#34;", "") ?? "",
+                    $"Criado automaticamente a partir do programa #{tarefa.Id}."
+                ),
+                ResultadosEsperadosPlanoOperacionalObject = tarefa.Campos.ResultadosEsperadosPlanoOperacional?.Valor?.Select(y => 
+                    new LinhaResultadoEsperadoPost(){
+                        Indicador = y.Indicador != null 
+                            ? new IndicadorPost() {
+                                    Id = y.Indicador.Id.ToString(),
+                                    Nome = y.Indicador.Nome,
+                                    UnidadeMedida = y.Indicador.UnidadeMedida
+                                }
+                            : null,
+                        Valor = y.Valor,
+                        ObjetivoEstrategico = new ObjetivoEstrategicoPost() {
+                            Id = y.ObjetivoEstrategico.Id,
+                            Nome = y.ObjetivoEstrategico.Nome
+                        }
+                    }
+                    ).ToArray(),
+                TarefasDoPoObj = new CampoTarefasPOPost() { 
+                    TarefasPlanoOperacional = 
+                        tarefa.Campos.TarefasDoPo.Valor
+                        .Where(x => !(x.Situacao.Equals("Concluída") || x.Situacao.Equals("Cancelada")))
+                        .Select(x => new LinhaTarefaPlanoOperacionalPost(){
+                            IdTarefa = x.IdTarefa,
+                            IdTarefaPai = x.IdTarefaPai
+                        })
+                        .ToArray()
+                },
+                ListaTarefasPrecedentes =  tarefa.Campos.TarefasPrecedentes.Valor?.Select(x => x.Id).ToList() ?? new List<int>()
+            }
+        };
+
+#!markdown
+
+# Obtendo programas do exercício atual e do próximo
+
+O objetivo é copiar os programas de um exercício para o outro. Para tanto, é necessário obter a lista de programas do ano corrente e a lista do próximo ano. Esta, a princípio, estará vazia. Mas caso ocorra algum erro durante a execução do código e seja necessário executar novamente, a lista de programas para o próximo ano será útil para fazer a carga diferencial.
+
+Os ids das pactuações podem ser obtidos a partir do cadastro das pactuações (ver o Id da URL).
+
+Com os Ids, é possível obter o ano da pactuação via API, bem como obter as listas de programas.
+
+Importante notar que esse notebook serve somente para copiar tarefas da atividade 93 - Programa (cujo código é pi2020prog).
+
+#!csharp
+
+string str_pactuacao_oriem = "14";
+string str_pactuacao_destino = "16";
+string str_cod_atividade = "pi2020prog";
+
+Pactuacao pactuacao_origem = await EAudFunctions.GetEntidade<Pactuacao>($"planejamento/pactuacao/{str_pactuacao_oriem}");
+Pactuacao pactuacao_destino = await EAudFunctions.GetEntidade<Pactuacao>($"planejamento/pactuacao/{str_pactuacao_destino}");
+
+#!csharp
+
+int? ano_pactuacao_origem = pactuacao_origem.DataInicio?.Year;
+int? ano_pactuacao_destino = pactuacao_destino.DataInicio?.Year;
+
+var programas_ano_corrente = await EAudFunctions.GetProgramas(true, str_pactuacao_oriem).ToArrayAsync();
+var programas_proximo_ano = await EAudFunctions.GetProgramas(true, str_pactuacao_destino).ToArrayAsync();
+
+var diferenca = programas_ano_corrente
+    .Where(x => !programas_proximo_ano.Any(y => x.Titulo == y.Titulo.Replace($"({ano_pactuacao_destino})", $"({ano_pactuacao_origem})")))
+    .ToArray();
+
+#!csharp
+
+var detalhe_programa = await EAudFunctions.GetTarefaDetalhada<CamposPrograma>(diferenca.First().Id);
+detalhe_programa
+
+#!csharp
+
+CriaTarefaProgramaPost(detalhe_programa, str_cod_atividade, pactuacao_origem, pactuacao_destino)
+
+#!csharp
+
+foreach (var programa in diferenca){
+    var detalhe_programa = await EAudFunctions.GetTarefaDetalhada<CamposPrograma>(programa.Id);
+    var nova_tarefa = CriaTarefaProgramaPost(detalhe_programa, str_cod_atividade, ano_pactuacao_origem.Value, ano_pactuacao_destino.Value)
+    
+}
+
+#!markdown
+
+Por fim, obtemos os tipso de interação disponíveis.
+
+#!csharp
+
+List<TipoInteracao> interacoes = new List<TipoInteracao>();
+
+var queryVazia = new Dictionary<string, string>(){ };
+
+await foreach (var tipoInteracao in EAudFunctions.GetEntidades<TipoInteracaoResumido>($"atividade/{atividade.Id}/tipointeracao", queryVazia)){
+    Log.Information($"Buscando interacao {tipoInteracao.Id}");
+    interacoes.Add(await EAudFunctions.GetEntidade<TipoInteracao>($"tipointeracao/{tipoInteracao.Id}/json"));
+}
+
+interacoes
