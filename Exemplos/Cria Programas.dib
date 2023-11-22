@@ -14,7 +14,7 @@ Primeiramente, carregamos os pacotes necessários e importamos os ***namespaces*
 
 #!csharp
 
-#r "nuget:ClienteEAud, 1.0.0"
+#r "nuget:ClienteEAud, 1.0.1"
 #r "nuget:Serilog.Sinks.Console, 3.1.1"
 
 #!csharp
@@ -84,12 +84,29 @@ public class Pactuacao
 
 #!csharp
 
-private static TarefaPost<CamposProgramaPost> CriaTarefaProgramaPost(Tarefa<CamposPrograma> tarefa, string codigoAtividade, Pactuacao exercicioOrigem, Pactuacao exercicioDestino) =>
-    new TarefaPost<CamposProgramaPost>(){
+public class NovoCamposPrograma : CamposPrograma {
+    [JsonPropertyName("EixoTematicoPrograma")]
+    public CampoGenerico<ValorCampoMultivalorado> EixoTematicoPrograma { get; set; }
+}
+
+public class NovoCamposProgramaPost : CamposProgramaPost {
+
+    [JsonIgnore]
+    public int[] EixoTematicoPrograma { get; set; }
+
+    [JsonPropertyName("EixoTematicoPrograma")]
+    public string strEixoTematicoPrograma { get => EixoTematicoPrograma?.Count() > 0 ? String.Join(',', EixoTematicoPrograma) : null; }
+
+}
+
+#!csharp
+
+private static TarefaPost<NovoCamposProgramaPost> CriaTarefaProgramaPost(Tarefa<CamposPrograma> tarefa, string codigoAtividade, Pactuacao exercicioOrigem, Pactuacao exercicioDestino) =>
+    new TarefaPost<NovoCamposProgramaPost>(){
             Id = "",
             Compartilhamentos = new List<CompartilhamentoPost>(),
             CodigoAtividade = codigoAtividade,
-            Campos = new CamposProgramaPost(){
+            Campos = new NovoCamposProgramaPost(){
                 Codpisiafi = tarefa.Campos.CodPISiafi.Valor,
                 GerentePrograma = String.Join(',', tarefa.Campos.GerentePrograma.Valor.Select(x => x.Id).ToArray()),
                 PactuacaoPO = exercicioDestino.Id.ToString(),
@@ -170,7 +187,13 @@ detalhe_programa
 
 #!csharp
 
-CriaTarefaProgramaPost(detalhe_programa, str_cod_atividade, pactuacao_origem, pactuacao_destino)
+t
+
+#!csharp
+
+var t  = CriaTarefaProgramaPost(detalhe_programa, str_cod_atividade, pactuacao_origem, pactuacao_destino);
+t = await EAudFunctions.PostaTarefa(t);
+t
 
 #!csharp
 
