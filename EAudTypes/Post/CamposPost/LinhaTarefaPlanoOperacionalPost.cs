@@ -7,7 +7,7 @@ namespace eAudStuffCSharp.EAudTypes.Post.CamposPost
 {
     public class LinhaTarefaPlanoOperacionalPost    {
         [JsonPropertyName("idPlanoOperacional")]
-        public int IdPlanoOperacional { get; set; }
+        public int? IdPlanoOperacional { get; set; }
 
         [JsonPropertyName("id")]
         public object Id { get; set; } 

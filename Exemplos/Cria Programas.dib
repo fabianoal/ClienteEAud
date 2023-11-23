@@ -14,7 +14,7 @@ Primeiramente, carregamos os pacotes necessários e importamos os ***namespaces*
 
 #!csharp
 
-#r "nuget:ClienteEAud, 1.0.1"
+#r "nuget:ClienteEAud, 1.0.3"
 #r "nuget:Serilog.Sinks.Console, 3.1.1"
 
 #!csharp
@@ -28,6 +28,7 @@ using eAudStuffCSharp.Util;
 using System.Threading.Tasks;
 using System.Linq;
 using System.IO;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using eAudStuffCSharp.EAudTypes.Query.Campos;
 using eAudStuffCSharp.EAudTypes.Post;
@@ -84,39 +85,46 @@ public class Pactuacao
 
 #!csharp
 
-public class NovoCamposPrograma : CamposPrograma {
+public class CamposProgramaExtendido : CamposPrograma {
     [JsonPropertyName("EixoTematicoPrograma")]
     public CampoGenerico<ValorCampoMultivalorado> EixoTematicoPrograma { get; set; }
 }
 
-public class NovoCamposProgramaPost : CamposProgramaPost {
+public class CamposProgramaExtendidoPost : CamposProgramaPost {
 
     [JsonIgnore]
-    public int[] EixoTematicoPrograma { get; set; }
+    public int? EixoTematicoPrograma { get; set; }
 
     [JsonPropertyName("EixoTematicoPrograma")]
-    public string strEixoTematicoPrograma { get => EixoTematicoPrograma?.Count() > 0 ? String.Join(',', EixoTematicoPrograma) : null; }
+    public string strEixoTematicoPrograma { get => EixoTematicoPrograma?.ToString() ; }
 
 }
 
 #!csharp
 
-private static TarefaPost<NovoCamposProgramaPost> CriaTarefaProgramaPost(Tarefa<CamposPrograma> tarefa, string codigoAtividade, Pactuacao exercicioOrigem, Pactuacao exercicioDestino) =>
-    new TarefaPost<NovoCamposProgramaPost>(){
+private static TarefaPost<CamposProgramaExtendidoPost> CriaTarefaProgramaPost(Tarefa<CamposProgramaExtendido> tarefa, string codigoAtividade, Pactuacao exercicioOrigem, Pactuacao exercicioDestino) =>
+    new TarefaPost<CamposProgramaExtendidoPost>(){
             Id = "",
             Compartilhamentos = new List<CompartilhamentoPost>(),
             CodigoAtividade = codigoAtividade,
-            Campos = new NovoCamposProgramaPost(){
+            Campos = new CamposProgramaExtendidoPost(){
                 Codpisiafi = tarefa.Campos.CodPISiafi.Valor,
                 GerentePrograma = String.Join(',', tarefa.Campos.GerentePrograma.Valor.Select(x => x.Id).ToArray()),
                 PactuacaoPO = exercicioDestino.Id.ToString(),
                 Titulo = tarefa.Titulo.Replace($"({exercicioOrigem.DataFim?.Year})" , $"({exercicioDestino.DataFim?.Year})"),
                 DescriResultados = tarefa.Campos.DescriResultados.Valor?.Replace("&#34;", "") ?? "",
                 Prioridade = tarefa.Campos.Prioridade.Valor?.Id.ToString() ?? null,
+                EixoTematicoPrograma = tarefa.Campos.EixoTematicoPrograma.Valor.Id,
+                UnidadeApoioGerentePrograma = tarefa.Campos.UnidadeApoioGerentePrograma?.Valor?.Id.ToString() ?? String.Empty,
+                ItensCadeiaDeValor = tarefa.Campos.CadeiaDeValor.Valor.Select(x => x.Id).ToArray(),
+                UnidadeAnaliseTecnicaObj = (tarefa.Campos.UnidadeAnaliseTecnica?.Valor != null) 
+                    ? new Unidade(){ Id = tarefa.Campos.UnidadeAnaliseTecnica.Valor.Id } 
+                    : null,
                 Detalhamento = string.Join('\n',
                     tarefa.Campos.Detalhamento.Valor?.Replace("&#34;", "") ?? "",
                     $"Criado automaticamente a partir do programa #{tarefa.Id}."
                 ),
+                FlagDescentralizacaoEmSeparado = (tarefa.Campos.FlagDescentralizacaoEmSeparado?.Valor > 0),
                 ResultadosEsperadosPlanoOperacionalObject = tarefa.Campos.ResultadosEsperadosPlanoOperacional?.Valor?.Select(y => 
                     new LinhaResultadoEsperadoPost(){
                         Indicador = y.Indicador != null 
@@ -125,7 +133,11 @@ private static TarefaPost<NovoCamposProgramaPost> CriaTarefaProgramaPost(Tarefa<
                                     Nome = y.Indicador.Nome,
                                     UnidadeMedida = y.Indicador.UnidadeMedida
                                 }
-                            : null,
+                            : new IndicadorPost() {
+                                    Id = null,
+                                    Nome = "",
+                                    UnidadeMedida = ""
+                                },
                         Valor = y.Valor,
                         ObjetivoEstrategico = new ObjetivoEstrategicoPost() {
                             Id = y.ObjetivoEstrategico.Id,
@@ -138,12 +150,19 @@ private static TarefaPost<NovoCamposProgramaPost> CriaTarefaProgramaPost(Tarefa<
                         tarefa.Campos.TarefasDoPo.Valor
                         .Where(x => !(x.Situacao.Equals("Concluída") || x.Situacao.Equals("Cancelada")))
                         .Select(x => new LinhaTarefaPlanoOperacionalPost(){
+                            IdPlanoOperacional = null,
                             IdTarefa = x.IdTarefa,
-                            IdTarefaPai = x.IdTarefaPai
+                            IdTarefaPai = x.IdTarefaPai,
+                            TituloTarefa = x.TituloTarefa,
+                            AlocacoesTarefaPlanoOperacional = new AlocacaoPO[] { },
+                            Situacao = x.Situacao,
+                            TituloTarefaPai = x.TituloTarefaPai,
+                            IdTipoAlocacao = 1,
+                            Impacto = x.Impacto
                         })
                         .ToArray()
                 },
-                ListaTarefasPrecedentes =  tarefa.Campos.TarefasPrecedentes.Valor?.Select(x => x.Id).ToList() ?? new List<int>()
+                ListaTarefasPrecedentes =  new List<int>() { tarefa.Id }
             }
         };
 
@@ -182,12 +201,11 @@ var diferenca = programas_ano_corrente
 
 #!csharp
 
-var detalhe_programa = await EAudFunctions.GetTarefaDetalhada<CamposPrograma>(diferenca.First().Id);
-detalhe_programa
+var detalhe_programa = await EAudFunctions.GetTarefaDetalhada<CamposProgramaExtendido>(diferenca.First().Id);
 
 #!csharp
 
-t
+File.WriteAllTextAsync("tarefa.json", JsonSerializer.Serialize(t, Confs.JsonSerializerOptions));
 
 #!csharp
 

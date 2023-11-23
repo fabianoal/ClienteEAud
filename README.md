@@ -6,7 +6,7 @@ Esse projeto visa fornecer uma ***classlibrary*** que facilite a tarefa de acess
 
 Para iniciar no usod desse cliente, você deve primeiramente instalar o dotnet-sdk versão 7.0 ou superior. O link para baixar os arquivos de instalação pode ser encontrado [aqui](https://dotnet.microsoft.com/en-us/download). Depois de instalar o SDK, vc terá à sua disposição a ferramenta de linha de comando ***dotnet***. 
 
-Para usar essa classlibrary em notebooks interativos, você precisará instalar o [***dotnet-interactive***](https://www.nuget.org/packages/Microsoft.dotnet-interactive). Para tanto, basta executar o seguinte comando dotnet **dotnet tool install --global Microsoft.dotnet-interactive --version 1.0.416502**.
+Para usar essa classlibrary em notebooks interativos, você precisará instalar o [***dotnet-interactive***](https://www.nuget.org/packages/Microsoft.dotnet-interactive). Para tanto, basta executar o seguinte comando dotnet **dotnet tool install --global Microsoft.dotnet-interactive**.
 
 Os notebooks dentro da pasta Exemplos estão no formato **dib**. Para editá-los, recomendamos o uso do Visual Studio Code com as extensões C# e Polyglot instaladas.
 
