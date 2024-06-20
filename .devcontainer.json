@@ -1,0 +1,9 @@
+{
+    "name": "r_dev",
+    "image": "fedora:fal_dotnet",
+    "customizations": {
+        "vscode": {
+          "extensions": ["ms-dotnettools.dotnet-interactive-vscode", "ms-dotnettools.csdevkit", "ms-mssql.mssql"]
+        }
+      }
+}
